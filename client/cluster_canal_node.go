@@ -41,7 +41,7 @@ func NewCanalClusterNode(destination string, zkServer []string, timeout time.Dur
 		return nil, fmt.Errorf("zk.Connect: %w", err)
 	}
 
-	cluster, _, _, err := zkClient.ChildrenW(fmt.Sprintf(cluster_path, destination))
+	cluster, _, err := zkClient.Children(fmt.Sprintf(cluster_path, destination))
 	if err != nil {
 		zkClient.Close()
 		return nil, fmt.Errorf("zkClient.ChildrenW err: %w", err)
