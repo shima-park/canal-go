@@ -21,11 +21,12 @@ import (
 	"bytes"
 	"encoding/binary"
 	"fmt"
-	pb "github.com/withlin/canal-go/protocol"
 	"io"
 	"net"
 	"strconv"
 	"sync"
+
+	pb "github.com/withlin/canal-go/protocol"
 
 	pbp "github.com/withlin/canal-go/protocol/packet"
 
@@ -42,7 +43,7 @@ type SimpleCanalConnector struct {
 	ClientIdentity    pb.ClientIdentity
 	Connected         bool
 	Running           bool
-	Filter            string
+	filter            string
 	RollbackOnConnect bool
 	LazyParseEntry    bool
 	conn              net.Conn
@@ -50,9 +51,9 @@ type SimpleCanalConnector struct {
 }
 
 const (
-	versionErr   string = "unsupported version at this client."
-	handshakeErr        = "expect handshake but found other type."
-	packetAckErr        = "unexpected packet type when ack is expected"
+	versionErr   = "unsupported version at this client."
+	handshakeErr = "expect handshake but found other type."
+	packetAckErr = "unexpected packet type when ack is expected"
 )
 
 // NewSimpleCanalConnector 创建SimpleCanalConnector实例
@@ -85,9 +86,6 @@ func (c *SimpleCanalConnector) Connect() error {
 	if err != nil {
 		return err
 	}
-	if c.Filter != "" {
-		c.Subscribe(c.Filter)
-	}
 
 	if c.RollbackOnConnect {
 		c.waitClientRunning()
@@ -109,7 +107,7 @@ func (c *SimpleCanalConnector) quitelyClose() {
 
 // DisConnection 关闭连接
 func (c *SimpleCanalConnector) DisConnection() error {
-	if c.RollbackOnConnect && c.Connected == true {
+	if c.RollbackOnConnect && c.Connected {
 		c.RollBack(0)
 	}
 	c.Connected = false
@@ -126,76 +124,76 @@ func (c *SimpleCanalConnector) doConnect() error {
 	}
 	c.conn = con
 
-	p := new(pbp.Packet)
 	data, err := c.readNextPacket()
 	if err != nil {
 		return err
 	}
+
+	p := new(pbp.Packet)
 	err = proto.Unmarshal(data, p)
 	if err != nil {
 		return err
 	}
-	if p != nil {
-		if p.GetVersion() != 1 {
-			return fmt.Errorf(versionErr)
-		}
 
-		if p.GetType() != pbp.PacketType_HANDSHAKE {
-			return fmt.Errorf(handshakeErr)
-		}
-
-		handshake := &pbp.Handshake{}
-		seed := &handshake.Seeds
-		err = proto.Unmarshal(p.GetBody(), handshake)
-		if err != nil {
-			return err
-		}
-		bytePas := []byte(c.PassWord)
-		pas := []byte(ByteSliceToHexString(Scramble411(&bytePas, seed)))
-		ca := &pbp.ClientAuth{
-			Username:               c.UserName,
-			Password:               pas,
-			NetReadTimeoutPresent:  &pbp.ClientAuth_NetReadTimeout{NetReadTimeout: c.IdleTimeOut},
-			NetWriteTimeoutPresent: &pbp.ClientAuth_NetWriteTimeout{NetWriteTimeout: c.IdleTimeOut},
-		}
-		caByteArray, _ := proto.Marshal(ca)
-		packet := &pbp.Packet{
-			Type: pbp.PacketType_CLIENTAUTHENTICATION,
-			Body: caByteArray,
-		}
-
-		packArray, _ := proto.Marshal(packet)
-
-		c.WriteWithHeader(packArray)
-
-		pp, err := c.readNextPacket()
-		if err != nil {
-			return err
-		}
-		pk := &pbp.Packet{}
-
-		err = proto.Unmarshal(pp, pk)
-		if err != nil {
-			return err
-		}
-
-		if pk.Type != pbp.PacketType_ACK {
-			return fmt.Errorf(packetAckErr)
-		}
-
-		ackBody := &pbp.Ack{}
-		err = proto.Unmarshal(pk.GetBody(), ackBody)
-		if err != nil {
-			return err
-		}
-		if ackBody.GetErrorCode() > 0 {
-
-			return fmt.Errorf("something goes wrong when doing authentication:%s", ackBody.GetErrorMessage())
-		}
-
-		c.Connected = true
-
+	if p.GetVersion() != 1 {
+		return fmt.Errorf(versionErr)
 	}
+
+	if p.GetType() != pbp.PacketType_HANDSHAKE {
+		return fmt.Errorf(handshakeErr)
+	}
+
+	handshake := &pbp.Handshake{}
+	seed := &handshake.Seeds
+	err = proto.Unmarshal(p.GetBody(), handshake)
+	if err != nil {
+		return err
+	}
+	bytePas := []byte(c.PassWord)
+	pas := []byte(ByteSliceToHexString(Scramble411(&bytePas, seed)))
+	ca := &pbp.ClientAuth{
+		Username:               c.UserName,
+		Password:               pas,
+		NetReadTimeoutPresent:  &pbp.ClientAuth_NetReadTimeout{NetReadTimeout: c.IdleTimeOut},
+		NetWriteTimeoutPresent: &pbp.ClientAuth_NetWriteTimeout{NetWriteTimeout: c.IdleTimeOut},
+	}
+	caByteArray, _ := proto.Marshal(ca)
+	packet := &pbp.Packet{
+		Type: pbp.PacketType_CLIENTAUTHENTICATION,
+		Body: caByteArray,
+	}
+
+	packArray, _ := proto.Marshal(packet)
+
+	c.WriteWithHeader(packArray)
+
+	pp, err := c.readNextPacket()
+	if err != nil {
+		return err
+	}
+	pk := &pbp.Packet{}
+
+	err = proto.Unmarshal(pp, pk)
+	if err != nil {
+		return err
+	}
+
+	if pk.Type != pbp.PacketType_ACK {
+		return fmt.Errorf(packetAckErr)
+	}
+
+	ackBody := &pbp.Ack{}
+	err = proto.Unmarshal(pk.GetBody(), ackBody)
+	if err != nil {
+		return err
+	}
+	if ackBody.GetErrorCode() > 0 {
+
+		return fmt.Errorf("something goes wrong when doing authentication:%s", ackBody.GetErrorMessage())
+	}
+
+	c.Connected = true
+
 	return nil
 
 }
@@ -214,15 +212,13 @@ func (c *SimpleCanalConnector) GetWithOutAck(batchSize int32, timeOut *int64, un
 		size = batchSize
 	}
 	var time *int64
-	var t int64
-	t = -1
+	var t int64 = -1
 	if timeOut == nil {
 		time = &t
 	} else {
 		time = timeOut
 	}
-	var i int32
-	i = -1
+	var i int32 = -1
 	if units == nil {
 		units = &i
 	}
@@ -287,6 +283,9 @@ func (c *SimpleCanalConnector) UnSubscribe() error {
 	pa.Body = unSub
 
 	pack, err := proto.Marshal(pa)
+	if err != nil {
+		return err
+	}
 	c.WriteWithHeader(pack)
 
 	p, err := c.readNextPacket()
@@ -371,16 +370,6 @@ func (c *SimpleCanalConnector) RollBack(batchId int64) error {
 	return nil
 }
 
-// readHeaderLength 读取protobuf的header字节，该字节存取了你要读的package的长度
-func (c *SimpleCanalConnector) readHeaderLength() int {
-	buf := make([]byte, 4)
-	c.conn.Read(buf)
-	bytesBuffer := bytes.NewBuffer(buf)
-	var x int32
-	binary.Read(bytesBuffer, binary.BigEndian, &x)
-	return int(x)
-}
-
 // readNextPacket 通过长度去读取数据包
 func (c *SimpleCanalConnector) readNextPacket() ([]byte, error) {
 	c.mutex.Lock()
@@ -411,8 +400,8 @@ func (c *SimpleCanalConnector) WriteWithHeader(body []byte) {
 	c.mutex.Lock()
 	lenth := len(body)
 	bytes := getWriteHeaderBytes(lenth)
-	c.conn.Write(bytes)
-	c.conn.Write(body)
+	_, _ = c.conn.Write(bytes)
+	_, _ = c.conn.Write(body)
 	c.mutex.Unlock()
 }
 
@@ -420,7 +409,7 @@ func (c *SimpleCanalConnector) WriteWithHeader(body []byte) {
 func getWriteHeaderBytes(lenth int) []byte {
 	x := int32(lenth)
 	bytesBuffer := bytes.NewBuffer([]byte{})
-	binary.Write(bytesBuffer, binary.BigEndian, x)
+	_ = binary.Write(bytesBuffer, binary.BigEndian, x)
 	return bytesBuffer.Bytes()
 }
 
@@ -458,7 +447,7 @@ func (c *SimpleCanalConnector) Subscribe(filter string) error {
 		return fmt.Errorf("failed to subscribe with reason:%s", ack.GetErrorMessage())
 	}
 
-	c.Filter = filter
+	c.filter = filter
 
 	return nil
 }

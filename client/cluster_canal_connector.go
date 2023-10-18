@@ -3,11 +3,12 @@ package client
 import (
 	"errors"
 	"fmt"
-	"github.com/samuel/go-zookeeper/zk"
 	"log"
 	"sort"
 	"strings"
 	"time"
+
+	"github.com/samuel/go-zookeeper/zk"
 
 	pb "github.com/withlin/canal-go/protocol"
 )
@@ -17,22 +18,22 @@ type ClusterCanalConnector struct {
 	canalNode                       *CanalClusterNode
 	username, password, destination string
 	soTimeOut, idleTimeOut          int32
-	filter                          string
 
-	RetryTimes int32
+	RetryTimes      int32
 	currentSequence string
-	zkVersion int32
+	zkVersion       int32
 
-	Path	string
+	Path string
 }
 
-const 	(
-	path = "/canal-consumer"
-	runningFlag = byte(0)
+const (
+	path           = "/canal-consumer"
+	runningFlag    = byte(0)
 	notRunningFlag = byte(0)
 )
+
 func NewClusterCanalConnector(canalNode *CanalClusterNode, username string, password string, destination string,
-	soTimeOut int32, idleTimeOut int32) (*ClusterCanalConnector,error) {
+	soTimeOut int32, idleTimeOut int32) (*ClusterCanalConnector, error) {
 
 	destinationPath := fmt.Sprintf("%s/%s", path, destination)
 
@@ -43,20 +44,20 @@ func NewClusterCanalConnector(canalNode *CanalClusterNode, username string, pass
 
 	currentSequence, err := createEphemeralSequence(canalNode.zkClient, destinationPath)
 	if err != nil {
-		return nil,err
+		return nil, err
 	}
 
 	cluster := &ClusterCanalConnector{
-		canalNode:   canalNode,
-		username:    username,
-		password:    password,
-		destination: destination,
-		soTimeOut:   soTimeOut,
-		idleTimeOut: idleTimeOut,
-		RetryTimes:  0,
-		currentSequence:currentSequence,
-		zkVersion:0,
-		Path:		  destinationPath,
+		canalNode:       canalNode,
+		username:        username,
+		password:        password,
+		destination:     destination,
+		soTimeOut:       soTimeOut,
+		idleTimeOut:     idleTimeOut,
+		RetryTimes:      0,
+		currentSequence: currentSequence,
+		zkVersion:       0,
+		Path:            destinationPath,
 	}
 
 	return cluster, nil
@@ -69,17 +70,22 @@ func (cc *ClusterCanalConnector) Connect() error {
 }
 
 func (cc *ClusterCanalConnector) reconnect() error {
-	err := cc.doConnect()
+	err := cc.DisConnection()
 	if err != nil {
-		log.Println("connect canal-server failed ",err)
-		cc.RetryTimes ++
+		log.Println("disconnect canal-server failed on reconnection", err)
+	}
+
+	err = cc.doConnect()
+	if err != nil {
+		log.Println("connect canal-server failed on reconnection", err)
+		cc.RetryTimes++
 		if cc.RetryTimes < 5 {
-			time.Sleep(5*time.Second)
+			time.Sleep(5 * time.Second)
 			return cc.reconnect()
 		}
 		return err
 	}
-	cc.RetryTimes =0
+	cc.RetryTimes = 0
 
 	return nil
 }
@@ -113,17 +119,19 @@ func (cc *ClusterCanalConnector) doConnect() error {
 		return err
 	}
 
-	log.Println("connected to ",addr," success")
+	log.Println("connected to ", addr, " success")
 
 	return nil
 }
 
-
 func (cc *ClusterCanalConnector) DisConnection() error {
 	if cc.conn != nil {
-		cc.conn.DisConnection()
+		err := cc.conn.DisConnection()
+		if err != nil {
+			log.Printf("failed to disconnection canal server: %v", err)
+		}
 		_, stat, _ := cc.canalNode.zkClient.Get(cc.Path + "/" + cc.currentSequence)
-		err := cc.canalNode.zkClient.Delete(cc.Path+"/"+cc.currentSequence, stat.Version)
+		err = cc.canalNode.zkClient.Delete(cc.Path+"/"+cc.currentSequence, stat.Version)
 		if err != nil {
 			return fmt.Errorf("error delete temp consumer path %s", err.Error())
 		}
@@ -164,9 +172,9 @@ func (cc *ClusterCanalConnector) GetWithOutAck(batchSize int32, timeOut *int64, 
 	if err != nil {
 		err = cc.reconnect()
 		if err != nil {
-			return nil,err
+			return nil, err
 		}
-		return cc.conn.GetWithOutAck(batchSize,timeOut,units)
+		return cc.conn.GetWithOutAck(batchSize, timeOut, units)
 	}
 
 	return
@@ -177,9 +185,9 @@ func (cc *ClusterCanalConnector) Get(batchSize int32, timeOut *int64, units *int
 	if err != nil {
 		err = cc.reconnect()
 		if err != nil {
-			return nil,err
+			return nil, err
 		}
-		return cc.conn.Get(batchSize,timeOut,units)
+		return cc.conn.Get(batchSize, timeOut, units)
 	}
 
 	return
@@ -211,9 +219,9 @@ func (cc *ClusterCanalConnector) RollBack(batchId int64) error {
 	return nil
 }
 
-func createEphemeralSequence(zkClient *zk.Conn, destinationPath string) (string,  error) {
+func createEphemeralSequence(zkClient *zk.Conn, destinationPath string) (string, error) {
 	node, err := zkClient.Create(destinationPath+"/", []byte{notRunningFlag}, zk.FlagEphemeral|zk.FlagSequence,
-	zk.WorldACL(zk.PermAll))
+		zk.WorldACL(zk.PermAll))
 	if err != nil {
 		return "", err
 	}
@@ -230,7 +238,7 @@ func checkRootPath(zkClient *zk.Conn, destinationPath string) error {
 	if !rootExists {
 		_, err := zkClient.Create(path, []byte{}, 0, zk.WorldACL(zk.PermAll))
 		if err != nil {
-			return  err
+			return err
 		}
 	}
 	exists, _, err := zkClient.Exists(destinationPath)
@@ -240,13 +248,13 @@ func checkRootPath(zkClient *zk.Conn, destinationPath string) error {
 	if !exists {
 		_, err := zkClient.Create(destinationPath, []byte{}, 0, zk.WorldACL(zk.PermAll))
 		if err != nil {
-			return  err
+			return err
 		}
 	}
 	return nil
 }
 
-func (cc *ClusterCanalConnector) waitBecomeFirst()  error {
+func (cc *ClusterCanalConnector) waitBecomeFirst() error {
 	zkClient := cc.canalNode.zkClient
 	children, _, err := zkClient.Children(cc.Path)
 	if err != nil {
@@ -260,11 +268,8 @@ func (cc *ClusterCanalConnector) waitBecomeFirst()  error {
 	sort.Strings(children)
 
 	if cc.currentSequence != children[0] {
-		noSelf := true
-
 		for i, child := range children {
 			if cc.currentSequence == child {
-				noSelf = false
 				previousPath := cc.Path + "/" + children[i-1]
 				//阻塞等待上一个比他小的节点删除
 				log.Println("waiting")
@@ -278,20 +283,18 @@ func (cc *ClusterCanalConnector) waitBecomeFirst()  error {
 			}
 		}
 
-		if noSelf {
-			//以防万一
-			cc.currentSequence, err = createEphemeralSequence(zkClient, cc.Path)
-			if err != nil {
-				return err
-			}
-			return cc.waitBecomeFirst()
+		//以防万一
+		cc.currentSequence, err = createEphemeralSequence(zkClient, cc.Path)
+		if err != nil {
+			return err
 		}
+		return cc.waitBecomeFirst()
 	}
 
 	return nil
 }
 
-//等待上一个比他小的节点失联，失联后等待10秒，10秒后还没恢复则确认已被删除
+// 等待上一个比他小的节点失联，失联后等待10秒，10秒后还没恢复则确认已被删除
 func waitDelete(zkClient *zk.Conn, previousPath string) error {
 	existsW, _, events, err := zkClient.ExistsW(previousPath)
 	if err != nil {
@@ -301,11 +304,11 @@ func waitDelete(zkClient *zk.Conn, previousPath string) error {
 	if existsW {
 		event := <-events
 		if event.Type != zk.EventNodeDeleted {
-			return waitDelete(zkClient,previousPath)
-		}else {
+			return waitDelete(zkClient, previousPath)
+		} else {
 			//等待10秒再查看监听的节点是否确实不存在了，以防只是网络延迟造成的掉线
-			time.Sleep(10*time.Second)
-			return waitDelete(zkClient,previousPath)
+			time.Sleep(10 * time.Second)
+			return waitDelete(zkClient, previousPath)
 		}
 	}
 

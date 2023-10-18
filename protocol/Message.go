@@ -17,8 +17,8 @@
 package protocol
 
 import (
-	"errors"
 	"fmt"
+
 	"github.com/gogo/protobuf/proto"
 	pbe "github.com/withlin/canal-go/protocol/entry"
 	pbp "github.com/withlin/canal-go/protocol/packet"
@@ -81,8 +81,8 @@ func Decode(data []byte, lazyParseEntry bool) (*Message, error) {
 		if err != nil {
 			return nil, err
 		}
-		panic(errors.New(fmt.Sprintf("something goes wrong with reason:%s", ack.GetErrorMessage())))
+		panic(fmt.Errorf("something goes wrong with reason:%s", ack.GetErrorMessage()))
 	default:
-		panic(errors.New(fmt.Sprintf("unexpected packet type:%s", p.Type)))
+		panic(fmt.Errorf("unexpected packet type:%s", p.Type))
 	}
 }

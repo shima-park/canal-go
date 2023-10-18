@@ -86,22 +86,21 @@ func printEntry(entrys []pbe.Entry) {
 
 		err := proto.Unmarshal(entry.GetStoreValue(), rowChange)
 		checkError(err)
-		if rowChange != nil {
-			eventType := rowChange.GetEventType()
-			header := entry.GetHeader()
-			fmt.Println(fmt.Sprintf("================> binlog[%s : %d],name[%s,%s], eventType: %s", header.GetLogfileName(), header.GetLogfileOffset(), header.GetSchemaName(), header.GetTableName(), header.GetEventType()))
 
-			for _, rowData := range rowChange.GetRowDatas() {
-				if eventType == pbe.EventType_DELETE {
-					printColumn(rowData.GetBeforeColumns())
-				} else if eventType == pbe.EventType_INSERT {
-					printColumn(rowData.GetAfterColumns())
-				} else {
-					fmt.Println("-------> before")
-					printColumn(rowData.GetBeforeColumns())
-					fmt.Println("-------> after")
-					printColumn(rowData.GetAfterColumns())
-				}
+		eventType := rowChange.GetEventType()
+		header := entry.GetHeader()
+		fmt.Printf("================> binlog[%s : %d],name[%s,%s], eventType: %s\n", header.GetLogfileName(), header.GetLogfileOffset(), header.GetSchemaName(), header.GetTableName(), header.GetEventType())
+
+		for _, rowData := range rowChange.GetRowDatas() {
+			if eventType == pbe.EventType_DELETE {
+				printColumn(rowData.GetBeforeColumns())
+			} else if eventType == pbe.EventType_INSERT {
+				printColumn(rowData.GetAfterColumns())
+			} else {
+				fmt.Println("-------> before")
+				printColumn(rowData.GetBeforeColumns())
+				fmt.Println("-------> after")
+				printColumn(rowData.GetAfterColumns())
 			}
 		}
 	}
@@ -109,7 +108,7 @@ func printEntry(entrys []pbe.Entry) {
 
 func printColumn(columns []*pbe.Column) {
 	for _, col := range columns {
-		fmt.Println(fmt.Sprintf("%s : %s  update= %t", col.GetName(), col.GetValue(), col.GetUpdated()))
+		fmt.Printf("%s : %s  update= %t\n", col.GetName(), col.GetValue(), col.GetUpdated())
 	}
 }
 

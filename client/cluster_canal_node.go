@@ -2,6 +2,7 @@ package client
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"log"
 	"math/rand"
@@ -24,10 +25,9 @@ type ServerRunningData struct {
 }
 
 type CanalClusterNode struct {
-	zkClient *zk.Conn
+	zkClient       *zk.Conn
 	destination    string
 	clusterAddress []string
-	clusterEvent   <-chan zk.Event
 }
 
 const (
@@ -35,41 +35,41 @@ const (
 	running_path = "/otter/canal/destinations/%s/running"
 )
 
-func NewCanalClusterNode(destination string, zkServer []string, timeout time.Duration) (canalNode *CanalClusterNode, err error) {
-	var (
-		zkClient   *zk.Conn
-		cluster    []string
-		clusterEV  <-chan zk.Event
-	)
-
-	if zkClient, _, err = zk.Connect(zkServer, timeout); err != nil {
-		log.Printf("zk.Connect err:%v", err)
-		return
-	}
-	if cluster, _, clusterEV, err = zkClient.ChildrenW(fmt.Sprintf(cluster_path, destination)); err != nil {
-		log.Printf("zkClient.ChildrenW err:%v", err)
-		return
+func NewCanalClusterNode(destination string, zkServer []string, timeout time.Duration) (*CanalClusterNode, error) {
+	zkClient, _, err := zk.Connect(zkServer, timeout)
+	if err != nil {
+		return nil, fmt.Errorf("zk.Connect: %w", err)
 	}
 
-	canalNode = &CanalClusterNode{
-		zkClient:zkClient,
-		destination:   destination,
-		clusterEvent:  clusterEV,
+	cluster, _, _, err := zkClient.ChildrenW(fmt.Sprintf(cluster_path, destination))
+	if err != nil {
+		zkClient.Close()
+		return nil, fmt.Errorf("zkClient.ChildrenW err: %w", err)
 	}
 
-	canalNode.InitClusters(cluster)
+	rand.Shuffle(len(cluster), func(a, b int) {
+		cluster[a], cluster[b] = cluster[b], cluster[a]
+	})
 
-	return
+	canalNode := &CanalClusterNode{
+		zkClient:       zkClient,
+		destination:    destination,
+		clusterAddress: cluster,
+	}
+
+	return canalNode, nil
 }
 
-func (canalNode *CanalClusterNode) InitClusters(addressList []string) {
-	rand.Shuffle(len(addressList), func(a, b int) {
-		addressList[a], addressList[b] = addressList[b], addressList[a]
-	})
-	canalNode.clusterAddress = addressList
+func (canalNode *CanalClusterNode) Close() {
+	if canalNode.zkClient != nil {
+		canalNode.zkClient.Close()
+	}
 }
 
 func (canalNode *CanalClusterNode) GetNode() (addr string, port int, err error) {
+	if canalNode.zkClient == nil {
+		return "", 0, errors.New("zk client is closed")
+	}
 
 	serverRunningData, err := canalNode.getRunningServer()
 	if err != nil {
@@ -77,33 +77,33 @@ func (canalNode *CanalClusterNode) GetNode() (addr string, port int, err error) 
 	}
 
 	s := strings.Split(serverRunningData.Address, ":")
-	if len(s) == 2 && s[0]!=""{
+	if len(s) == 2 && s[0] != "" {
 		port, err = strconv.Atoi(s[1])
-		if  err != nil {
-			return "",0, fmt.Errorf("error canal cluster server %s", serverRunningData.Address)
+		if err != nil {
+			return "", 0, fmt.Errorf("error canal cluster server %s", serverRunningData.Address)
 		}
 
 		addr = s[0]
 		return
-	}else {
+	} else {
 		return "", 0, fmt.Errorf("error canal cluster server %s", serverRunningData.Address)
 	}
 }
 
-func (canalNode *CanalClusterNode) getRunningServer() (ServerRunningData,error) {
+func (canalNode *CanalClusterNode) getRunningServer() (ServerRunningData, error) {
 	serverInfo := ServerRunningData{}
 
 	body, _, err := canalNode.zkClient.Get(fmt.Sprintf(running_path, canalNode.destination))
 	if err != nil {
 		log.Printf("zkClient.GetW err:%v", err)
-		return serverInfo,err
+		return serverInfo, err
 	}
 
-	err = json.Unmarshal(body, &serverInfo);
+	err = json.Unmarshal(body, &serverInfo)
 	if err != nil {
 		log.Printf("json.Unmarshal err:%v", err)
-		return serverInfo,err
+		return serverInfo, err
 	}
 
-	return serverInfo,nil
+	return serverInfo, nil
 }
