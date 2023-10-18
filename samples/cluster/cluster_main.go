@@ -7,8 +7,8 @@ import (
 	"time"
 
 	"github.com/gogo/protobuf/proto"
-	"github.com/withlin/canal-go/client"
-	pbe "github.com/withlin/canal-go/protocol/entry"
+	"github.com/shima-park/canal-go/client"
+	pbe "github.com/shima-park/canal-go/protocol/entry"
 )
 
 var conn *client.ClusterCanalConnector

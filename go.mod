@@ -1,4 +1,4 @@
-module github.com/withlin/canal-go
+module github.com/shima-park/canal-go
 
 require (
 	github.com/gogo/protobuf v1.3.2
@@ -6,4 +6,6 @@ require (
 	github.com/samuel/go-zookeeper v0.0.0-20180130194729-c4fab1ac1bec
 )
 
-go 1.13
+require google.golang.org/protobuf v1.26.0 // indirect
+
+go 1.17

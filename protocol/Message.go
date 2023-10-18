@@ -20,8 +20,8 @@ import (
 	"fmt"
 
 	"github.com/gogo/protobuf/proto"
-	pbe "github.com/withlin/canal-go/protocol/entry"
-	pbp "github.com/withlin/canal-go/protocol/packet"
+	pbe "github.com/shima-park/canal-go/protocol/entry"
+	pbp "github.com/shima-park/canal-go/protocol/packet"
 )
 
 type Message struct {

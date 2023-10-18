@@ -3,4 +3,4 @@ language: go
 go:
   - "1.14.x"
 
-go_import_path: github.com/withlin/canal-go
+go_import_path: github.com/shima-park/canal-go

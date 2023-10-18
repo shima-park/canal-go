@@ -10,7 +10,7 @@ import (
 
 	"github.com/samuel/go-zookeeper/zk"
 
-	pb "github.com/withlin/canal-go/protocol"
+	pb "github.com/shima-park/canal-go/protocol"
 )
 
 type ClusterCanalConnector struct {
